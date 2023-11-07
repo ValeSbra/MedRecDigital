@@ -1,0 +1,123 @@
+---
+title: "Mediterranean Fish Interest"
+output: 
+  flexdashboard::flex_dashboard:
+    vertical_layout: fill
+    theme: 
+      version: 5
+      bg: "#edf3f5"
+      fg: "#29728c" 
+      primary: "#a8d0de"
+      navbar-bg: "#94b0b9"
+      base_font: 
+        google: Roboto
+      code_font:
+        google: Fira Code
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(tidyverse)
+library(kableExtra)
+
+# Install thematic and un-comment for themed static plots (i.e., ggplot2)
+# thematic::thematic_rmd()
+
+source("functions.R")
+
+# LOAD DATA
+
+gsv_data <- read_rds("GSV_data.rds") %>% 
+  pivot_longer(cols = 5:774, names_to = "species", values_to = "gsv_results") %>% 
+  mutate(year = as_factor(year))
+
+species <- gsv_data %>% distinct(species) %>% pull()
+years <- gsv_data %>% distinct(year) %>% pull()
+countries <- gsv_data %>% distinct(country) %>% pull()
+
+```
+
+About
+=======================================================
+
+Column {data-width=600}
+-------------------------------------------------------
+
+### Introduction
+
+-- INSERT INFORMATION HERE --
+
+### Sources and acknowledgements
+
+- [GitHub Repo](https://github.com/valesbra/MedRecDigital)
+- Acknowledgements
+
+
+Med Digital {data-orientation=rows}
+=======================================================
+
+Google Trends data.
+
+_ADD INFORMATION_
+
+```{r}
+selectInput(inputId = "selected_species_gsv", label = "Selected Species", choices = species)
+
+# Set a reactive object for the chosen species
+gsv_filtered_species <- reactive({gsv_data %>% filter(species == input$selected_species_gsv)})
+
+```
+
+### Search volume by country
+
+Mean annual search volume. ---- CHANGE TO MAP ----
+
+```{r}
+
+renderPlot({
+  gsv_filtered_species() %>% 
+    ggplot() + aes(x = id, y = gsv_results) + 
+    geom_bar(stat = "summary", fun = "mean", fill = "#556839") + 
+    labs(x = "Country (code)", y = "Google Search Volume") + 
+    theme_base()
+}, height = 550)
+
+```
+
+### Search volume by year
+
+Mean annual search volume.
+
+```{r}
+
+renderPlot({
+  gsv_filtered_species() %>% 
+    ggplot() + aes(x = year, y = gsv_results) + 
+    geom_bar(stat = "summary", fun = "mean", fill = "#556839") +
+    labs(x = "Year", y = "Google Search Volume") +
+    theme_base()
+}, height = 550)
+
+```
+
+### Search volume by country, over the years
+
+```{r}
+selectInput(inputId = "selected_country", label = "Selected Country", choices = countries)
+
+# Set a reactive object for the chosen species
+gsv_filtered_data <- reactive({gsv_data %>% filter(species == input$selected_species_gsv,
+                                                   country == input$selected_country)})
+
+renderPlot({
+  gsv_filtered_data() %>% 
+    ggplot() + aes(x = year, y = gsv_results) + 
+    geom_bar(stat = "summary", fun = "mean", fill = "#717639") +
+    labs(x = "Year", y = "Google Search Volume") + 
+    theme_base()
+}, height = 500)
+
+```
+
+
