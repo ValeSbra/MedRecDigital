@@ -1,5 +1,5 @@
 ---
-title: "Mediterranean Fish Interest"
+title: "Mediterranean Fish Public Interest"
 output: 
   flexdashboard::flex_dashboard:
     vertical_layout: fill
@@ -28,19 +28,60 @@ source("functions.R")
 
 # LOAD DATA
 
+## GSV data, updated MAY 2023
 gsv_data <- read_rds("GSV_data.rds") %>% 
-  pivot_longer(cols = 5:774, names_to = "species", values_to = "gsv_results") %>% 
-  mutate(year = as_factor(year))
+  pivot_longer(cols = 5:774, names_to = "Species", values_to = "gsv_results") %>% 
+  mutate(year = as_factor(year)) %>% 
+  select(Species, gsv_results, country, country_code = id, year) %>% 
+  left_join(readxl::read_excel("Species_05_03_2023.xlsx")) %>% 
+  janitor::clean_names()
 
+## Create some lists to help with filtering etc.
 species <- gsv_data %>% distinct(species) %>% pull()
 years <- gsv_data %>% distinct(year) %>% pull()
 countries <- gsv_data %>% distinct(country) %>% pull()
+
+## Create map item
 world <- map_data("world")
+
+```
+
+<!-- CSS customisation for some elements -->
+```{css}
+.section.level1, .section.level2, .section.level3, section.level1, section.level2, section.level3 {
+    margin-top: 0rem;
+}
+
+.selectize-input {
+    min-height: 1.5rem;
+    transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.selectize-input {
+    display: inline-block;
+    width: 100%;
+    position: relative;
+    z-index: 1;
+    box-sizing: border-box;
+    box-shadow: none;
+    border-width: 1px;
+    border-style: solid;
+    border-color: rgb(159, 191, 203);
+    border-image: initial;
+    padding: 0.2rem 0.5rem;
+    overflow: hidden;
+    border-radius: 0.375rem;
+}
+
+.form-label, .shiny-input-container .control-label {
+    margin-bottom: 0.1rem;
+}
 
 ```
 
 About
 =======================================================
+<!-- First page -->
 
 Column {data-width=600}
 -------------------------------------------------------
@@ -53,77 +94,99 @@ Column {data-width=600}
 
 - [GitHub Repo](https://github.com/valesbra/MedRecDigital)
 - Acknowledgements
+- Etc...
 
 
 Med Digital {data-orientation=rows}
 =======================================================
+<!-- Second page -->
 
-Google Trends data.
-
-_ADD INFORMATION_
-
+Column {.sidebar data-width=400}
+-------------------------------------
 ```{r}
-selectInput(inputId = "selected_species_gsv", label = "Selected Species", choices = species)
+# Species selection: here the user can select a species to focus on
+selectInput(inputId = "selected_species", label = "Selected Species", choices = species)
 
 # Set a reactive object for the chosen species
-gsv_filtered_species <- reactive({gsv_data %>% filter(species == input$selected_species_gsv)})
+filtered_species <- reactive({gsv_data %>% filter(species == input$selected_species)})
 
 ```
 
-### Search volume by country
+#### Species details
 
-Mean annual search volume. ---- CHANGE TO MAP ----
-
+##### **Common name**
 ```{r}
+renderText({filtered_species() %>% distinct(name) %>% pull(name)})
+```
 
-renderPlot({
-  gsv_filtered_species() %>% 
-    ggplot() +
-    geom_map(map = world, aes(map_id = country, fill = gsv_results)) + 
-    scale_fill_distiller(palette = "Spectral", limits = c(2,6000)) +
-    expand_limits(x = world$long, y = world$lat) +
-    coord_sf(xlim = c(-10, 40), ylim = c(30, 50)) +
-    labs(x = "Longitude", "Latitude") +
-    theme(axis.title = element_blank(), 
-          panel.background = element_rect(fill = "white"), 
-          legend.position = "bottom", legend.key.height = unit(10, "point"), legend.key.width = unit(30, "point"), 
-          legend.box = "horizontal")
-}, height = 550)
+##### **FishBase page URL**
+```{r}
+renderText({filtered_species() %>% distinct(url) %>% pull(url)})
 
 ```
 
-### Search volume by year
+##### **Family**
+```{r}
+renderText({filtered_species() %>% distinct(family) %>% pull(family)})
 
+```
+
+Row {data-height=35%}
+-------------------------------------
+### Search volume by country
 Mean annual search volume.
 
 ```{r}
 
 renderPlot({
-  gsv_filtered_species() %>% 
+  filtered_species() %>% 
+    ggplot() +
+    geom_map(map = world, aes(map_id = country, fill = gsv_results)) + 
+    scale_fill_distiller(palette = "Spectral", name = "GSV value") +
+    expand_limits(x = world$long, y = world$lat) +
+    coord_sf(xlim = c(-10, 40), ylim = c(30, 50)) +
+    labs(x = "Longitude", "Latitude") +
+    theme(axis.title = element_blank(), 
+          axis.ticks = element_blank(),
+          axis.text = element_blank(),
+          panel.background = element_rect(fill = "white"), 
+          legend.position = "left", legend.key.width = unit(10, "point"), legend.key.height = unit(30, "point"))
+}, height = 200)
+
+```
+
+Row {data-height=65%}
+-------------------------------------
+### Search Volume by **year**
+
+```{r}
+
+renderPlot({
+  filtered_species() %>% 
     ggplot() + aes(x = year, y = gsv_results) + 
     geom_bar(stat = "summary", fun = "mean", fill = "#556839") +
     labs(x = "Year", y = "Google Search Volume") +
     theme_base()
-}, height = 550)
+}, height = 300)
 
 ```
 
-### Search volume by country, over the years
+### Search Volume by **country**, over the years
 
 ```{r}
-selectInput(inputId = "selected_country", label = "Selected Country", choices = countries)
+selectInput(inputId = "selected_country", label = "Selected country", choices = countries)
 
 # Set a reactive object for the chosen species
-gsv_filtered_data <- reactive({gsv_data %>% filter(species == input$selected_species_gsv,
+filtered_data <- reactive({gsv_data %>% filter(species == input$selected_species,
                                                    country == input$selected_country)})
 
 renderPlot({
-  gsv_filtered_data() %>% 
+  filtered_data() %>% 
     ggplot() + aes(x = year, y = gsv_results) + 
     geom_bar(stat = "summary", fun = "mean", fill = "#717639") +
     labs(x = "Year", y = "Google Search Volume") + 
     theme_base()
-}, height = 500)
+}, height = 300)
 
 ```
 
