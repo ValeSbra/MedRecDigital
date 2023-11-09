@@ -142,18 +142,22 @@ Mean annual search volume.
 
 renderPlot({
   filtered_species() %>% 
-    ggplot() +
-    geom_map(map = world, aes(map_id = country, fill = gsv_results)) + 
-    scale_fill_distiller(palette = "Spectral", name = "GSV value") +
-    expand_limits(x = world$long, y = world$lat) +
-    coord_sf(xlim = c(-10, 40), ylim = c(30, 50)) +
-    labs(x = "Longitude", "Latitude") +
-    theme(axis.title = element_blank(), 
-          axis.ticks = element_blank(),
-          axis.text = element_blank(),
-          panel.background = element_rect(fill = "white"), 
-          legend.position = "left", legend.key.width = unit(10, "point"), legend.key.height = unit(30, "point"))
-}, height = 250)
+  group_by(country) %>% summarise(sum_gsv = sum(gsv_results)) %>% 
+  mutate(sum_gsv = if_else(sum_gsv > 0, sum_gsv, NA)) %>% 
+  ggplot() +
+  aes(map_id = country, fill = sum_gsv) +
+  geom_map(map = world) + 
+  scale_fill_distiller(palette = "Spectral", name = "GSV value", na.value = "lightgray") +
+  expand_limits(x = world$long, y = world$lat) +
+  coord_sf(xlim = c(-10, 40), ylim = c(30, 50)) +
+  labs(x = "Longitude", "Latitude", caption = "Sum of annual Google Search Volume values are displayed. Sum = 0 is in gray.") +
+  theme(axis.title = element_blank(), 
+        axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        panel.background = element_rect(fill = "white"), 
+        legend.position = "left", legend.key.width = unit(10, "point"), legend.key.height = unit(30, "point"),
+        plot.caption = element_text(colour = "#9b9898"))
+}, height = 200)
 
 ```
 
