@@ -2,13 +2,13 @@
 title: "Mediterranean Fish Public Interest"
 output: 
   flexdashboard::flex_dashboard:
-    vertical_layout: fill
+    vertical_layout: scroll
     theme: 
       version: 5
-      bg: "#edf3f5"
-      fg: "#29728c" 
-      primary: "#a8d0de"
-      navbar-bg: "#94b0b9"
+      bg: "#e9f7f9"
+      fg: "#023e8a"       
+      primary: "#00b4d8"    
+      navbar-bg: "#0077b6"
       base_font: 
         google: Roboto
       code_font:
@@ -18,10 +18,12 @@ runtime: shiny
 
 ```{r setup, include=FALSE}
 library(maps)
+library(shiny)
 library(sf)
 library(flexdashboard)
 library(tidyverse)
 library(kableExtra)
+library(glue)
 
 # Install thematic and un-comment for themed static plots (i.e., ggplot2)
 # thematic::thematic_rmd()
@@ -31,12 +33,23 @@ source("functions.R")
 # LOAD DATA
 
 ## GSV data, updated MAY 2023
-gsv_data <- read_rds("GSV_data.rds") %>% 
-  pivot_longer(cols = 5:774, names_to = "Species", values_to = "gsv_results") %>% 
-  mutate(year = as_factor(year)) %>% 
-  select(Species, gsv_results, country, country_code = id, year) %>% 
-  left_join(readxl::read_excel("Species_05_03_2023.xlsx")) %>% 
-  janitor::clean_names()
+gsv_data <- read_rds("GSV_data_sa.rds") %>% 
+  mutate(year = as_factor(year)) %>%
+  left_join(readxl::read_excel("all_fish_traits_v3_26-04-24.xlsx"), by = "species")
+
+iucn_categories <- tibble::tribble(
+  ~IUCN_Code, ~Label,              ~Color,
+  "LC",       "Least Concern",           "#60C659",
+  "NT",       "Near Threatened",         "#CCE226",
+  "VU",       "Vulnerable",              "#F9E814",
+  "EN",       "Endangered",              "#FC7F3F",
+  "CR",       "Critically Endangered",   "#D81E05",
+  "DD",       "Data Deficient",          "#D1D1C6", 
+  "NE",       "Not Evaluated",           "#FFFFFF"
+)
+
+gsv_data <- gsv_data %>%
+  left_join(iucn_categories, by = "IUCN_Code")
 
 ## Create some lists to help with filtering etc.
 species <- gsv_data %>% distinct(species) %>% pull()
@@ -45,7 +58,6 @@ countries <- gsv_data %>% distinct(country) %>% pull()
 
 ## Create map item
 world <- map_data("world")
-
 ```
 
 <!-- CSS customisation for some elements -->
@@ -79,6 +91,13 @@ world <- map_data("world")
     margin-bottom: 0.1rem;
 }
 
+.shiny-input-container {
+  margin-bottom: 0.2rem !important;
+}
+
+.knitr-plot-output {
+  margin-top: 0.2rem !important;
+}
 ```
 
 About
@@ -103,7 +122,7 @@ Med Digital {data-orientation=rows}
 =======================================================
 <!-- Second page -->
 
-Column {.sidebar data-width=400}
+Column {.sidebar data-width=300}
 -------------------------------------
 ```{r}
 # Species selection: here the user can select a species to focus on
@@ -111,89 +130,361 @@ selectInput(inputId = "selected_species", label = "Selected Species", choices = 
 
 # Set a reactive object for the chosen species
 filtered_species <- reactive({gsv_data %>% filter(species == input$selected_species)})
+```
 
+```{r}
+# Set a visual label for Status
+output$status_info <- renderUI({
+  status_val <- filtered_species() %>% distinct(Status) %>% pull(Status)
+
+  if (length(status_val) == 0 || is.na(status_val) || status_val == "NA") {
+    return(HTML("<div style='background-color:#d7d7d7; color:black; padding:15px 20px; 
+                       border-radius:10px; font-size:16px; font-weight:bold; text-align:center;
+                       box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
+                  ❔ Unknown
+                </div>"))
+  }
+
+  status_clean <- tolower(status_val)
+  capitalize <- function(x) {
+    paste0(toupper(substr(x, 1, 1)), substr(x, 2, nchar(x)))
+  }
+  display_text <- capitalize(status_val)
+
+  if (status_clean %in% c("native", "endemic")) {
+    HTML(glue::glue("
+      <div style='background-color:#27ae60; color:black; padding:15px 20px; 
+                  border-radius:10px; font-size:16px; font-weight:bold; text-align:center;
+                  box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
+        🐟 Native Species
+      </div>
+    "))
+  } else if (status_clean == "introduced") {
+    HTML(glue::glue("
+      <div style='background-color:#e74c3c; color:black; padding:15px 20px; 
+                  border-radius:10px; font-size:16px; font-weight:bold; text-align:center;
+                  box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
+        ⚠️ Alien Species
+      </div>
+    "))
+  } else {
+    HTML(glue::glue("
+      <div style='background-color:#f1c40f; color:black; padding:15px 20px; 
+                  border-radius:10px; font-size:16px; font-weight:bold; text-align:center;
+                  box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
+        ❕ Other: {display_text}
+      </div>
+    "))
+  }
+})
+```
+
+```{r}
+# Set a visual label for IUCN Category
+output$iucn_status <- renderUI({
+  data <- filtered_species() %>% distinct(IUCN_Code, Label, Color)
+  
+  if (nrow(data) == 0 || is.na(data$IUCN_Code)) {
+    HTML("<div style='background-color:#d7d7d7; color:black; padding:15px 20px; 
+               border-radius:10px; font-size:16px; font-weight:bold; text-align:center;
+               box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
+               No data available
+         </div>")
+  } else {
+    HTML(glue::glue(
+      "<div style='background-color:{data$Color}; 
+                   color:black; 
+                   padding:15px 20px; 
+                   border-radius:10px; 
+                   font-size:16px;
+                   font-weight:bold;
+                   text-align:center;
+                   box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
+         {data$IUCN_Code} ({data$Label})
+       </div>"
+    ))
+  }
+})
+```
+
+```{r}
+# Set a visual label for FishBase URL
+output$fishbase_link <- renderUI({
+  url <- filtered_species() %>% distinct(URL) %>% pull(URL)
+  
+  if (is.null(url) || is.na(url) || url == "") {
+    return(HTML("<span style='color:black;'>No FishBase link available</span>"))
+  }
+    htmltools::tags$a(
+      href = url,
+      target = "_blank",
+      style = "font-weight:bold; color:#007BFF; text-decoration:none;",
+      "FishBase"
+    )
+})
 ```
 
 #### Species details
 
-##### **Common name**
+##### **Common Name**
 ```{r}
-renderText({filtered_species() %>% distinct(name) %>% pull(name)})
-```
-
-##### **FishBase page URL**
-```{r}
-renderText({filtered_species() %>% distinct(url) %>% pull(url)})
-
+renderUI({
+  name <- filtered_species() %>% distinct(FBname) %>% pull(FBname)
+  name_text <- ifelse(is.na(name) || name == "" || name == "NA", "Unknown", as.character(name))
+  
+  HTML(paste0(
+    "<div style='background-color:#e9f7f9; color:black; padding:15px 20px; 
+          border-radius:10px; font-size:16px; font-weight:bold; text-align:center;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>",
+    name_text,
+    "</div>"
+  ))
+})
 ```
 
 ##### **Family**
 ```{r}
-renderText({filtered_species() %>% distinct(family) %>% pull(family)})
-
+renderUI({
+  fam <- filtered_species() %>% distinct(Family) %>% pull(Family)
+  fam_text <- ifelse(is.na(fam) || fam == "" || fam == "NA", "Unknown", as.character(fam))
+  
+  HTML(paste0(
+    "<div style='background-color:#e9f7f9; color:black; padding:15px 20px; 
+          border-radius:10px; font-size:16px; font-weight:bold; text-align:center;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>",
+    fam_text,
+    "</div>"
+  ))
+})
 ```
 
-Row {data-height=35%}
+##### **Native/Alien**
+```{r, results='asis'}
+uiOutput("status_info")
+```
+
+##### **IUCN Category**
+```{r, results='asis'}
+uiOutput("iucn_status")
+```
+
+##### **Commercial Importance**
+```{r}
+renderUI({
+  imp <- filtered_species() %>% distinct(Importance) %>% pull(Importance)
+  
+  # Capitalizar directamente aquí
+  if (is.na(imp) || imp == "" || imp == "NA") {
+    imp_text <- "Unknown"
+  } else {
+    imp <- as.character(imp)
+    imp_text <- paste0(toupper(substr(imp, 1, 1)), tolower(substr(imp, 2, nchar(imp))))
+  }
+  
+  HTML(paste0(
+    "<div style='background-color:#e9f7f9; color:black; padding:15px 20px; 
+          border-radius:10px; font-size:16px; font-weight:bold; text-align:center;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>",
+    imp_text,
+    "</div>"
+  ))
+})
+```
+
+##### **Characteristics**
+```{r}
+renderUI({
+  # Extraer todos los datos necesarios
+  data <- filtered_species() %>% 
+    select(length = `Length (cm)`, 
+           weight = `Weight (g)`, 
+           habitat = DemersPelag, 
+           feeding = FeedingType)
+
+  if (nrow(data) == 0) {
+    return(htmltools::div(
+      style = "background-color:#d6d6d6; color:black; padding:15px 20px; 
+               border-radius:10px; font-size:16px; font-weight:bold; text-align:center;
+               box-shadow: 0 2px 4px rgba(0,0,0,0.1);",
+      "No data available"
+    ))
+  }
+
+  format_trait <- function(label, value) {
+    value_clean <- ifelse(is.na(value) || value == "NA", "Unknown", tools::toTitleCase(tolower(as.character(value))))
+    glue::glue("<strong>{label}</strong> {value_clean}")
+  }
+
+  trait_lines <- glue::glue_collapse(c(
+    format_trait("Length (cm):", data$length[1]),
+    format_trait("Weight (g):", data$weight[1]),
+    format_trait("Habitat:", data$habitat[1]),
+    format_trait("Feeding:", data$feeding[1])
+  ), sep = "<br>")
+
+  htmltools::div(
+    style = "background-color:#e9f7f9; color:black; padding:15px 20px; 
+             border-radius:10px; font-size:14px; line-height:1.8;
+             box-shadow: 0 2px 4px rgba(0,0,0,0.1);",
+    HTML(trait_lines)
+  )
+})
+```
+
+##### **Bibliography**
+```{r, results='asis'}
+uiOutput("fishbase_link")
+```
+
+
+
+Column {data-width=800}
 -------------------------------------
 ### Search volume by country
-Mean annual search volume.
 
 ```{r}
-
 renderPlot({
   filtered_species() %>% 
-  group_by(country) %>% summarise(sum_gsv = sum(gsv_results)) %>% 
-  mutate(sum_gsv = if_else(sum_gsv > 0, sum_gsv, NA)) %>% 
-  ggplot() +
-  aes(map_id = country, fill = sum_gsv) +
-  geom_map(map = world) + 
-  scale_fill_distiller(palette = "Spectral", name = "GSV value", na.value = "lightgray") +
-  expand_limits(x = world$long, y = world$lat) +
-  coord_sf(xlim = c(-10, 40), ylim = c(30, 50)) +
-  labs(x = "Longitude", "Latitude", caption = "Sum of annual Google Search Volume values are displayed. Sum = 0 is in gray.") +
-  theme(axis.title = element_blank(), 
-        axis.ticks = element_blank(),
-        axis.text = element_blank(),
+    group_by(country) %>% 
+    summarise(sum_gsv = sum(gsv_results, na.rm = TRUE), .groups = "drop") %>%
+    mutate(
+      max_val = max(sum_gsv, na.rm = TRUE),
+      sum_gsv = if_else(
+        max_val == 0, NA_real_,
+        (sum_gsv / max_val) * 100
+      ),
+      sum_gsv = if_else(sum_gsv > 0, sum_gsv, NA_real_)
+    ) %>%
+    ggplot(aes(map_id = country, fill = sum_gsv)) +
+      geom_map(map = world) + 
+      scale_fill_distiller(
+        palette = "Spectral", 
+        name = "Percentage of Maximum Google Search Volume (GSV)", 
+        na.value = "lightgray", 
+        limits = c(0, 100)
+      ) +
+      expand_limits(x = world$long, y = world$lat) +
+      coord_sf(xlim = c(-10, 40), ylim = c(30, 50)) +
+      labs(
+        x = "Longitude", 
+        y = "Latitude", 
+        caption = "Percentage of maximum sum of annual Google Search Volume (GSV) values are displayed. Percentage = 0 is in gray."
+      ) +
+      theme(
+        axis.title    = element_blank(), 
+        axis.ticks    = element_blank(),
+        axis.text     = element_blank(),
         panel.background = element_rect(fill = "white"), 
-        legend.position = "left", legend.key.width = unit(10, "point"), legend.key.height = unit(30, "point"),
-        plot.caption = element_text(colour = "#9b9898"))
-}, height = 200)
-
+        legend.position  = "bottom",
+        legend.direction = "horizontal",
+        legend.key.width  = unit(40, "point"),
+        legend.key.height = unit(10, "point"),
+        legend.title      = element_text(hjust = 0.5),
+        plot.caption      = element_text(colour = "#9b9898")
+      ) +
+      guides(
+        fill = guide_colorbar(
+          title.position = "bottom",
+          title.hjust     = 0.5,
+          barwidth        = unit(200, "points"),
+          barheight       = unit(8, "points")
+        )
+      )
+}, height = 435)
 ```
 
-Row {data-height=65%}
+Row
 -------------------------------------
+
 ### Search Volume by **year**
 
 ```{r}
-
 renderPlot({
   filtered_species() %>% 
-    ggplot() + aes(x = year, y = gsv_results) + 
-    geom_bar(stat = "summary", fun = "mean", fill = "#556839") +
-    labs(x = "Year", y = "Google Search Volume") +
+    group_by(year) %>%
+    summarise(mean_gsv = mean(gsv_results, na.rm = TRUE), .groups = "drop") %>%
+    mutate(
+      max_val = max(mean_gsv, na.rm = TRUE),
+      scaled_gsv = ifelse(
+        max_val == 0, NA_real_,
+        (mean_gsv / max_val) * 100
+      )
+    ) %>%
+    filter(!is.na(scaled_gsv)) %>%
+    ggplot() + aes(x = year, y = scaled_gsv) + 
+    geom_bar(stat = "identity", fill = "#00b4d8") +
+    labs(x = "Year", y = "Percentage of Maximum Google Search Volume") +
     theme_base()
-}, height = 300)
-
+}, height = 435)
 ```
 
 ### Search Volume by **country**, over the years
 
 ```{r}
-selectInput(inputId = "selected_country", label = "Selected country", choices = countries)
+# Crear un selector de países reactivo basado en la especie seleccionada
+observe({
+  # Validar que input$selected_species existe y no está vacío
+  req(input$selected_species)
+  
+  # Obtener países que tienen datos para la especie seleccionada
+  available_countries <- gsv_data %>% 
+    filter(species == input$selected_species, 
+           !is.na(gsv_results), 
+           gsv_results > 0) %>%
+    distinct(country) %>% 
+    pull(country) %>%
+    sort()
+  
+  # Actualizar las opciones del selector
+  updateSelectInput(
+    session, 
+    "selected_country",
+    choices = available_countries,
+    selected = if(length(available_countries) > 0) available_countries[1] else NULL
+  )
+})
 
-# Set a reactive object for the chosen species
-filtered_data <- reactive({gsv_data %>% filter(species == input$selected_species,
-                                                   country == input$selected_country)})
+# Crear el selector (inicialmente vacío, se actualizará con observe)
+selectInput(
+  inputId = "selected_country", 
+  label = "Selected country", 
+  choices = NULL,  # Inicialmente vacío
+  selected = NULL
+)
+
+# Set a reactive object for the chosen species and country
+filtered_data <- reactive({
+  req(input$selected_country)  # Esperar a que haya un país seleccionado
+  gsv_data %>% 
+    filter(species == input$selected_species, country == input$selected_country)
+})
 
 renderPlot({
-  filtered_data() %>% 
-    ggplot() + aes(x = year, y = gsv_results) + 
-    geom_bar(stat = "summary", fun = "mean", fill = "#717639") +
-    labs(x = "Year", y = "Google Search Volume") + 
-    theme_base()
-}, height = 300)
-
+  req(input$selected_country)  # Asegurar que hay un país seleccionado
+  
+  data <- filtered_data()
+  
+  if(nrow(data) == 0) {
+    # Si no hay datos, mostrar un gráfico vacío con mensaje
+    ggplot() + 
+      annotate("text", x = 0.5, y = 0.5, label = "No data available for this country", 
+               size = 6, color = "gray50") +
+      theme_void() +
+      xlim(0, 1) + ylim(0, 1)
+  } else {
+    data %>%
+      mutate(
+        max_val = max(gsv_results, na.rm = TRUE),
+        scaled_gsv = ifelse(
+          max_val == 0, NA_real_,
+          (gsv_results / max_val) * 100
+        )
+      ) %>%
+      filter(!is.na(scaled_gsv)) %>%
+      ggplot() + aes(x = year, y = scaled_gsv) + 
+      geom_bar(stat = "identity", fill = "#0077b6") +
+      labs(x = "Year", y = "Percentage of Maximum Google Search Volume") + 
+      theme_base()
+  }
+}, height = 368)
 ```
-
-
