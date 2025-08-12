@@ -126,7 +126,7 @@ Column {.sidebar data-width=300}
 -------------------------------------
 ```{r}
 # Species selection: here the user can select a species to focus on
-selectInput(inputId = "selected_species", label = "Selected Species", choices = species)
+selectInput(inputId = "selected_species", label = "Fish Species", choices = species)
 
 # Set a reactive object for the chosen species
 filtered_species <- reactive({gsv_data %>% filter(species == input$selected_species)})
@@ -141,8 +141,7 @@ output$status_info <- renderUI({
     return(HTML("<div style='background-color:#d7d7d7; color:black; padding:15px 20px; 
                        border-radius:10px; font-size:16px; font-weight:bold; text-align:center;
                        box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
-                  ❔ Unknown
-                </div>"))
+                  ❔ No data available                </div>"))
   }
 
   status_clean <- tolower(status_val)
@@ -230,7 +229,7 @@ output$fishbase_link <- renderUI({
 ```{r}
 renderUI({
   name <- filtered_species() %>% distinct(FBname) %>% pull(FBname)
-  name_text <- ifelse(is.na(name) || name == "" || name == "NA", "Unknown", as.character(name))
+  name_text <- ifelse(is.na(name) || name == "" || name == "NA", "No data available", as.character(name))
   
   HTML(paste0(
     "<div style='background-color:#e9f7f9; color:black; padding:15px 20px; 
@@ -246,7 +245,7 @@ renderUI({
 ```{r}
 renderUI({
   fam <- filtered_species() %>% distinct(Family) %>% pull(Family)
-  fam_text <- ifelse(is.na(fam) || fam == "" || fam == "NA", "Unknown", as.character(fam))
+  fam_text <- ifelse(is.na(fam) || fam == "" || fam == "NA", "No data available", as.character(fam))
   
   HTML(paste0(
     "<div style='background-color:#e9f7f9; color:black; padding:15px 20px; 
@@ -275,7 +274,7 @@ renderUI({
   
   # Capitalizar directamente aquí
   if (is.na(imp) || imp == "" || imp == "NA") {
-    imp_text <- "Unknown"
+    imp_text <- "No data available"
   } else {
     imp <- as.character(imp)
     imp_text <- paste0(toupper(substr(imp, 1, 1)), tolower(substr(imp, 2, nchar(imp))))
@@ -311,7 +310,7 @@ renderUI({
   }
 
   format_trait <- function(label, value) {
-    value_clean <- ifelse(is.na(value) || value == "NA", "Unknown", tools::toTitleCase(tolower(as.character(value))))
+    value_clean <- ifelse(is.na(value) || value == "NA", "No data available", tools::toTitleCase(tolower(as.character(value))))
     glue::glue("<strong>{label}</strong> {value_clean}")
   }
 
@@ -379,7 +378,7 @@ renderPlot({
     geom_polygon(
       data = map_data %>% filter(fill_color == -0.1),
       aes(x = long, y = lat, group = group),
-      fill = "lightgray", color = "black", size = 0.2
+      fill = "lightgray", color = "black", linewidth = 0.2
     ) +
     expand_limits(x = world$long, y = world$lat) +
     coord_sf(xlim = c(-10, 40), ylim = c(30, 50)) +
