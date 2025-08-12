@@ -118,7 +118,7 @@ Column {data-width=600}
 - Etc...
 
 
-Med Digital {data-orientation=rows}
+MedDigital {data-orientation=rows}
 =======================================================
 <!-- Second page -->
 
@@ -340,11 +340,12 @@ uiOutput("fishbase_link")
 
 Column {data-width=800}
 -------------------------------------
-### Search volume by country
+### Search Volume by country
 
 ```{r}
 renderPlot({
-  filtered_species() %>% 
+  study_countries <- unique(gsv_data$country)
+  species_data <- filtered_species() %>% 
     group_by(country) %>% 
     summarise(sum_gsv = sum(gsv_results, na.rm = TRUE), .groups = "drop") %>%
     mutate(
@@ -354,42 +355,59 @@ renderPlot({
         (sum_gsv / max_val) * 100
       ),
       sum_gsv = if_else(sum_gsv > 0, sum_gsv, NA_real_)
-    ) %>%
-    ggplot(aes(map_id = country, fill = sum_gsv)) +
-      geom_map(map = world) + 
-      scale_fill_distiller(
-        palette = "Spectral", 
-        name = "Percentage of Maximum Google Search Volume (GSV)", 
-        na.value = "lightgray", 
-        limits = c(0, 100)
-      ) +
-      expand_limits(x = world$long, y = world$lat) +
-      coord_sf(xlim = c(-10, 40), ylim = c(30, 50)) +
-      labs(
-        x = "Longitude", 
-        y = "Latitude", 
-        caption = "Percentage of maximum sum of annual Google Search Volume (GSV) values are displayed. Percentage = 0 is in gray."
-      ) +
-      theme(
-        axis.title    = element_blank(), 
-        axis.ticks    = element_blank(),
-        axis.text     = element_blank(),
-        panel.background = element_rect(fill = "white"), 
-        legend.position  = "bottom",
-        legend.direction = "horizontal",
-        legend.key.width  = unit(40, "point"),
-        legend.key.height = unit(10, "point"),
-        legend.title      = element_text(hjust = 0.5),
-        plot.caption      = element_text(colour = "#9b9898")
-      ) +
-      guides(
-        fill = guide_colorbar(
-          title.position = "bottom",
-          title.hjust     = 0.5,
-          barwidth        = unit(200, "points"),
-          barheight       = unit(8, "points")
-        )
+    )
+  
+  map_data <- world %>%
+    left_join(species_data, by = c("region" = "country")) %>%
+    mutate(
+      fill_color = case_when(
+        !is.na(sum_gsv) ~ sum_gsv,
+        region %in% study_countries ~ -0.1,
+        TRUE ~ NA_real_
       )
+    )
+  
+  ggplot(map_data, aes(x = long, y = lat, group = group, fill = fill_color)) +
+    geom_polygon(color = "black", linewidth = 0.2) +
+    scale_fill_distiller(
+      palette = "Spectral", 
+      name = "Percentage of Maximum Google Search Volume (GSV)", 
+      na.value = "white", 
+      values = c(0, 1), 
+      limits = c(0, 100)
+    ) +
+    geom_polygon(
+      data = map_data %>% filter(fill_color == -0.1),
+      aes(x = long, y = lat, group = group),
+      fill = "lightgray", color = "black", size = 0.2
+    ) +
+    expand_limits(x = world$long, y = world$lat) +
+    coord_sf(xlim = c(-10, 40), ylim = c(30, 50)) +
+    labs(
+      x = "Longitude", 
+      y = "Latitude", 
+      caption = "Percentage of maximum sum of annual Google Search Volume (GSV) values are displayed. Percentage = 0 is in gray."
+    ) +
+    theme(
+      axis.title    = element_blank(), 
+      axis.ticks    = element_blank(),
+      axis.text     = element_blank(),
+      panel.background = element_rect(fill = "white"), 
+      legend.position  = "bottom",
+      legend.direction = "horizontal",
+      legend.key.width  = unit(40, "point"),
+      legend.key.height = unit(10, "point"),
+      legend.title      = element_text(hjust = 0.5),
+      plot.caption      = element_text(colour = "#9b9898")
+    ) +
+    guides(
+      fill = guide_colorbar(
+        title.position = "bottom",
+        title.hjust     = 0.5,
+        barwidth        = unit(200, "points"),
+        barheight       = unit(8, "points")
+      )
+    )
 }, height = 435)
 ```
 
