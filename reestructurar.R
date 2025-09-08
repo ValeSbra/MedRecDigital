@@ -1,4 +1,4 @@
-### Convertir los datos en porcentaje y reestructurar
+### Reestructurar dataset
 
 ## Librerías y leer datos
 library(dplyr)

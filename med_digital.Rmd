@@ -24,28 +24,27 @@ library(flexdashboard)
 library(tidyverse)
 library(kableExtra)
 library(glue)
-
-# Install thematic and un-comment for themed static plots (i.e., ggplot2)
-# thematic::thematic_rmd()
+library(plotly)
+library(shinycssloaders)
 
 source("functions.R")
 
 # LOAD DATA
 
-## GSV data, updated MAY 2023
-gsv_data <- read_rds("GSV_data_sa.rds") %>% 
+## GSV data, updated SEPTEMBER 2025
+gsv_data <- read_rds("GSV_data_2013_2024.rds") %>% 
   mutate(year = as_factor(year)) %>%
   left_join(readxl::read_excel("all_fish_traits_v3_26-04-24.xlsx"), by = "species")
 
 iucn_categories <- tibble::tribble(
   ~IUCN_Code, ~Label,              ~Color,
-  "LC",       "Least Concern",           "#60C659",
-  "NT",       "Near Threatened",         "#CCE226",
+  "LC",       "Least concern",           "#60C659",
+  "NT",       "Near threatened",         "#CCE226",
   "VU",       "Vulnerable",              "#F9E814",
   "EN",       "Endangered",              "#FC7F3F",
-  "CR",       "Critically Endangered",   "#D81E05",
-  "DD",       "Data Deficient",          "#D1D1C6", 
-  "NE",       "Not Evaluated",           "#FFFFFF"
+  "CR",       "Critically endangered",   "#D81E05",
+  "DD",       "Data deficient",          "#D1D1C6", 
+  "NE",       "Not evaluated",           "#FFFFFF"
 )
 
 gsv_data <- gsv_data %>%
@@ -109,13 +108,11 @@ Column {data-width=600}
 
 ### Introduction
 
--- INSERT INFORMATION HERE --
+This public observatory integrates emerging digital approaches to provide a cohesive perspective on how Google Search Volume (i.e., a proxy for public attention) related to Mediterranean marine fish species has changed across time and space. The species included here are those that have at least one measurement available for a country.
 
 ### Sources and acknowledgements
 
 - [GitHub Repo](https://github.com/valesbra/MedRecDigital)
-- Acknowledgements
-- Etc...
 
 
 MedDigital {data-orientation=rows}
@@ -155,7 +152,7 @@ output$status_info <- renderUI({
       <div style='background-color:#27ae60; color:black; padding:15px 20px; 
                   border-radius:10px; font-size:16px; font-weight:bold; text-align:center;
                   box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
-        🐟 Native Species
+        🐟 Native species
       </div>
     "))
   } else if (status_clean == "introduced") {
@@ -163,7 +160,7 @@ output$status_info <- renderUI({
       <div style='background-color:#e74c3c; color:black; padding:15px 20px; 
                   border-radius:10px; font-size:16px; font-weight:bold; text-align:center;
                   box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
-        ⚠️ Alien Species
+        ⚠️ Alien species
       </div>
     "))
   } else {
@@ -309,16 +306,35 @@ renderUI({
     ))
   }
 
-  format_trait <- function(label, value) {
-    value_clean <- ifelse(is.na(value) || value == "NA", "No data available", tools::toTitleCase(tolower(as.character(value))))
+  format_trait <- function(label, value, is_numeric = FALSE) {
+    if (is.na(value) || value == "NA" || value == "" || is.null(value)) {
+      value_clean <- "No data available"
+    } else {
+      if (is_numeric) {
+        # Convertir a numérico y formatear con 1 decimal, manejando posibles errores
+        tryCatch({
+          numeric_value <- as.numeric(as.character(value))
+          if (!is.na(numeric_value)) {
+            value_clean <- sprintf("%.1f", numeric_value)
+          } else {
+            value_clean <- "No data available"
+          }
+        }, error = function(e) {
+          value_clean <- "No data available"
+        })
+      } else {
+        # Para valores no numéricos, aplicar title case
+        value_clean <- tools::toTitleCase(tolower(as.character(value)))
+      }
+    }
     glue::glue("<strong>{label}</strong> {value_clean}")
   }
 
   trait_lines <- glue::glue_collapse(c(
-    format_trait("Length (cm):", data$length[1]),
-    format_trait("Weight (g):", data$weight[1]),
-    format_trait("Habitat:", data$habitat[1]),
-    format_trait("Feeding:", data$feeding[1])
+    format_trait("Length (cm):", data$length[1], is_numeric = TRUE),
+    format_trait("Weight (g):", data$weight[1], is_numeric = TRUE),
+    format_trait("Habitat:", data$habitat[1], is_numeric = FALSE),
+    format_trait("Feeding:", data$feeding[1], is_numeric = FALSE)
   ), sep = "<br>")
 
   htmltools::div(
@@ -336,13 +352,11 @@ uiOutput("fishbase_link")
 ```
 
 
-
 Column {data-width=800}
 -------------------------------------
 ### Search Volume by country
-
 ```{r}
-renderPlot({
+output$gsv_map <- renderPlotly({
   study_countries <- unique(gsv_data$country)
   species_data <- filtered_species() %>% 
     group_by(country) %>% 
@@ -363,51 +377,117 @@ renderPlot({
         !is.na(sum_gsv) ~ sum_gsv,
         region %in% study_countries ~ -0.1,
         TRUE ~ NA_real_
+      ),
+      tooltip_text = case_when(
+        !is.na(sum_gsv) & sum_gsv >= 0 ~ paste0("<b>", region, ":</b> ", sprintf("%.2f", sum_gsv)),
+        region %in% study_countries ~ paste0("<b>", region, ":</b> ", "0.00"),
+        TRUE ~ region
       )
     )
   
-  ggplot(map_data, aes(x = long, y = lat, group = group, fill = fill_color)) +
+  p <- ggplot(map_data, aes(x = long, y = lat, group = group, fill = fill_color, text = tooltip_text)) +
     geom_polygon(color = "black", linewidth = 0.2) +
     scale_fill_distiller(
       palette = "Spectral", 
-      name = "Percentage of Maximum Google Search Volume (GSV)", 
+      name = "Google Search\nVolume (%)", 
       na.value = "white", 
       values = c(0, 1), 
       limits = c(0, 100)
-    ) +
+    )  +
     geom_polygon(
       data = map_data %>% filter(fill_color == -0.1),
       aes(x = long, y = lat, group = group),
       fill = "lightgray", color = "black", linewidth = 0.2
     ) +
     expand_limits(x = world$long, y = world$lat) +
-    coord_sf(xlim = c(-10, 40), ylim = c(30, 50)) +
-    labs(
-      x = "Longitude", 
-      y = "Latitude", 
-      caption = "Percentage of maximum sum of annual Google Search Volume (GSV) values are displayed. Percentage = 0 is in gray."
-    ) +
+    coord_map(xlim = c(-10, 40), ylim = c(30, 50)) +
     theme(
       axis.title    = element_blank(), 
       axis.ticks    = element_blank(),
       axis.text     = element_blank(),
-      panel.background = element_rect(fill = "white"), 
-      legend.position  = "bottom",
-      legend.direction = "horizontal",
-      legend.key.width  = unit(40, "point"),
-      legend.key.height = unit(10, "point"),
-      legend.title      = element_text(hjust = 0.5),
-      plot.caption      = element_text(colour = "#9b9898")
+      panel.background = element_rect(fill = "white"),
+      legend.direction = "vertical",
+      legend.title      = element_text(hjust = 0.5, size = 12)
     ) +
     guides(
       fill = guide_colorbar(
         title.position = "bottom",
         title.hjust     = 0.5,
-        barwidth        = unit(200, "points"),
-        barheight       = unit(8, "points")
+        barwidth        = unit(60, "points"),
+        barheight       = unit(30, "points")
       )
     )
-}, height = 435)
+  
+   ggplotly(p, tooltip = "text", height = 412) %>%
+     config(
+      displayModeBar = FALSE,
+      scrollZoom = FALSE,
+      doubleClick = FALSE,
+      showTips = FALSE,
+      staticPlot = FALSE,
+      showLink = FALSE,
+      displaylogo = FALSE,
+      editable = FALSE,
+      responsive = FALSE
+    ) %>%
+     layout(
+       dragmode = FALSE,
+       xaxis = list(
+         fixedrange = TRUE,
+         showspikes = FALSE
+       ),
+       yaxis = list(
+         fixedrange = TRUE,
+         showspikes = FALSE
+       ),
+       hoverlabel = list(
+          bgcolor = "white",
+          font = list(color = "black")
+       ),
+       selectdirection = "none"
+    ) %>%
+     htmlwidgets::onRender("
+    function(el, x) {
+      el.on('plotly_relayout', function(eventData) {
+        return false;
+      });
+      el.removeAllListeners('plotly_selected');
+      el.removeAllListeners('plotly_selecting');
+      el.removeAllListeners('plotly_click');
+      el.removeAllListeners('plotly_doubleclick');
+    }
+  ")
+})
+```
+
+```{r, results='asis'}
+### Search Volume by country
+div(
+  class = "plot-container",
+  withSpinner(
+    plotlyOutput("gsv_map", height = "412px"),
+    type = 6,           # estilo del spinner
+    color = "#0077b6",  # color del spinner
+    proxy.height = "412px"
+  )
+)
+# Mensaje fijo informativo debajo del gráfico
+div(
+  id = "gsv_map_message",
+  style = "color: black; font-size: 14px; margin-top: 5px; text-align: right; padding-right: 10px;",
+  "Percentage of sum of annual Google Search Volume (GSV) values are displayed. Percentage = 0 is in gray."
+)
+# CSS que añade el mensaje mientras carga
+tags$style(HTML("
+  .plot-container .load-container:after {
+    content: '⏳ Please wait, your results will be ready in about 10 seconds...';
+    display: block;
+    text-align: center;
+    color: black;
+    margin-top: 10px;
+    font-size: 18px;
+  }
+"))
 ```
 
 Row
@@ -416,8 +496,8 @@ Row
 ### Search Volume by **year**
 
 ```{r}
-renderPlot({
-  filtered_species() %>% 
+output$gsv_year_plot <- renderPlotly({
+  data_plot <- filtered_species() %>% 
     group_by(year) %>%
     summarise(mean_gsv = mean(gsv_results, na.rm = TRUE), .groups = "drop") %>%
     mutate(
@@ -425,14 +505,65 @@ renderPlot({
       scaled_gsv = ifelse(
         max_val == 0, NA_real_,
         (mean_gsv / max_val) * 100
-      )
+      ),
+      tooltip_text = paste0("<b>", year, ":</b> ", sprintf("%.2f", scaled_gsv))
     ) %>%
-    filter(!is.na(scaled_gsv)) %>%
-    ggplot() + aes(x = year, y = scaled_gsv) + 
+    filter(!is.na(scaled_gsv))
+    
+    p <- ggplot(data_plot, aes(x = year, y = scaled_gsv, text = tooltip_text)) + 
     geom_bar(stat = "identity", fill = "#00b4d8") +
-    labs(x = "Year", y = "Percentage of Maximum Google Search Volume") +
+    labs(x = "Year", y = "Percentage of Google Search Volume") +
     theme_base()
-}, height = 435)
+    
+    ggplotly(p, tooltip = "text") %>%
+     config(
+      displayModeBar = FALSE,
+      scrollZoom = FALSE,
+      doubleClick = FALSE,
+      showTips = FALSE,
+      staticPlot = FALSE,
+      showLink = FALSE,
+      displaylogo = FALSE,
+      editable = FALSE,
+      responsive = FALSE
+    ) %>%
+     layout(
+       dragmode = FALSE,
+       xaxis = list(
+         fixedrange = TRUE,  # Evita zoom en X
+         showspikes = FALSE
+       ),
+       yaxis = list(
+         fixedrange = TRUE,  # Evita zoom en Y
+         showspikes = FALSE
+       ),
+       hoverlabel = list(
+          bgcolor = "white",
+          font = list(color = "black")
+       ),
+       selectdirection = "none"
+    ) %>%
+     htmlwidgets::onRender("
+    function(el, x) {
+      el.on('plotly_relayout', function(eventData) {
+        return false;
+      });
+      el.removeAllListeners('plotly_selected');
+      el.removeAllListeners('plotly_selecting');
+      el.removeAllListeners('plotly_click');
+      el.removeAllListeners('plotly_doubleclick');
+    }
+  ")
+})
+
+div(
+  withSpinner(
+    plotlyOutput("gsv_year_plot", height = "368px"),
+    type = 6,
+    color = "#0077b6",
+    proxy.height = "368px"
+  )
+)
 ```
 
 ### Search Volume by **country**, over the years
@@ -476,32 +607,85 @@ filtered_data <- reactive({
     filter(species == input$selected_species, country == input$selected_country)
 })
 
-renderPlot({
+output$gsv_country_plot <- renderPlotly({
   req(input$selected_country)  # Asegurar que hay un país seleccionado
   
   data <- filtered_data()
   
   if(nrow(data) == 0) {
     # Si no hay datos, mostrar un gráfico vacío con mensaje
-    ggplot() + 
+    p <- ggplot() + 
       annotate("text", x = 0.5, y = 0.5, label = "No data available for this country", 
                size = 6, color = "gray50") +
       theme_void() +
       xlim(0, 1) + ylim(0, 1)
+    
+  ggplotly(p) %>% config(displayModeBar = FALSE)
   } else {
-    data %>%
+    data_plot <- data %>%
       mutate(
         max_val = max(gsv_results, na.rm = TRUE),
         scaled_gsv = ifelse(
           max_val == 0, NA_real_,
           (gsv_results / max_val) * 100
-        )
+        ),
+        tooltip_text = paste0("<b>", year, ":</b> ", sprintf("%.2f", scaled_gsv))
       ) %>%
-      filter(!is.na(scaled_gsv)) %>%
-      ggplot() + aes(x = year, y = scaled_gsv) + 
+      filter(!is.na(scaled_gsv))
+    
+      p <- ggplot(data_plot, aes(x = year, y = scaled_gsv, text = tooltip_text)) + 
       geom_bar(stat = "identity", fill = "#0077b6") +
-      labs(x = "Year", y = "Percentage of Maximum Google Search Volume") + 
+      labs(x = "Year", y = "Percentage of Google Search Volume") + 
       theme_base()
+      
+     ggplotly(p, tooltip = "text", height = 368) %>%
+     config(
+      displayModeBar = FALSE,
+      scrollZoom = FALSE,
+      doubleClick = FALSE,
+      showTips = FALSE,
+      staticPlot = FALSE,
+      showLink = FALSE,
+      displaylogo = FALSE,
+      editable = FALSE,
+      responsive = FALSE
+    ) %>%
+     layout(
+       dragmode = FALSE,
+       xaxis = list(
+         fixedrange = TRUE,  # Evita zoom en X
+         showspikes = FALSE
+       ),
+       yaxis = list(
+         fixedrange = TRUE,  # Evita zoom en Y
+         showspikes = FALSE
+       ),
+       hoverlabel = list(
+          bgcolor = "white",
+          font = list(color = "black")
+       ),
+       selectdirection = "none"
+    ) %>%
+     htmlwidgets::onRender("
+    function(el, x) {
+      el.on('plotly_relayout', function(eventData) {
+        return false;
+      });
+      el.removeAllListeners('plotly_selected');
+      el.removeAllListeners('plotly_selecting');
+      el.removeAllListeners('plotly_click');
+      el.removeAllListeners('plotly_doubleclick');
+    }
+  ")
   }
-}, height = 368)
+})
+
+div(
+  withSpinner(
+    plotlyOutput("gsv_country_plot", height = "368px"),
+    type = 6,
+    color = "#0077b6",
+    proxy.height = "368px"
+  )
+)
 ```

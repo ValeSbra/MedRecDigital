@@ -2,7 +2,7 @@
 # GGPLOT THEME ------------------------------------------------------------
 
 theme_base <- function(){ 
-  font <- "Ubuntu"   # assign font family up front
+  font <- "Roboto"   # assign font family up front
   
   theme_minimal() %+replace%    # replace some elements
     
@@ -18,12 +18,12 @@ theme_base <- function(){
       # text elements
       axis.title = element_text(
         family = font,
-        size = 12,
+        size = 11,
         face = "bold"),
       
       axis.text = element_text(
         family = font,
-        size = 11),
+        size = 10),
       
       axis.text.x = element_text(
         angle = 45, hjust = 1, vjust = 1.2)
