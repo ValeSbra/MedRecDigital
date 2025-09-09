@@ -400,7 +400,7 @@ output$gsv_map <- renderPlotly({
       fill = "lightgray", color = "black", linewidth = 0.2
     ) +
     expand_limits(x = world$long, y = world$lat) +
-    coord_map(xlim = c(-10, 40), ylim = c(30, 50)) +
+    coord_sf(xlim = c(-10, 40), ylim = c(30, 50)) +
     theme(
       axis.title    = element_blank(), 
       axis.ticks    = element_blank(),
@@ -515,7 +515,7 @@ output$gsv_year_plot <- renderPlotly({
     labs(x = "Year", y = "Percentage of Google Search Volume") +
     theme_base()
     
-    ggplotly(p, tooltip = "text") %>%
+    ggplotly(p, tooltip = "text", height = 435) %>%
      config(
       displayModeBar = FALSE,
       scrollZoom = FALSE,
